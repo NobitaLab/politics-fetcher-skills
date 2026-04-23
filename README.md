@@ -71,7 +71,12 @@ Obsidian 启动 → Templater 检查笔记 date → 本周已更新？跳过 →
 
 1. 启用 Templater 系统命令（`enable_system_commands: true`）
 
-2. 创建启动模板 `时政抓取.md`：
+2. 设置超时时间（抓取约需20秒）：
+```json
+"command_timeout": 60
+```
+
+3. 创建启动模板 `时政抓取.md`：
 ```markdown
 <%*
 // 智能跳过：检查笔记 date 是否在本周
@@ -88,7 +93,7 @@ async function needsUpdate() {
   if (!file) return true;
   
   const content = await app.vault.read(file);
-  const match = content.match(/^---[\r\n]+.*[\r\n]+date:\s*(\d{4}-\d{2}-\d{2})/);
+  const match = content.match(/date:\s*(\d{4}-\d{2}-\d{2})/);
   if (!match) return true;
   
   const lastMonday = getMonday(new Date(match[1]));
@@ -103,24 +108,19 @@ async function needsUpdate() {
 
 if (await needsUpdate()) {
   const vaultPath = app.vault.adapter.basePath;
-  tp.system.execute(
-    `claude -p "更新时政" --dangerously-skip-permissions --allowed-tools "Bash,Write,Read"`,
-    vaultPath
-  );
+  const command = `claude -p "更新时政" --dangerously-skip-permissions --allowed-tools "Bash,Write,Read"`;
+  
+  const { exec } = require('child_process');
+  exec(command, { cwd: vaultPath, maxBuffer: 1024 * 1024 * 10 });
 }
 %>
 ```
 
 > 注：修改 `notePath` 为你的笔记路径。
 
-3. 添加到 Templater 启动模板列表：
+4. 添加到 Templater 启动模板列表：
 ```json
 "startup_templates": ["时政抓取.md"]
-```
-
-4. 设置超时时间（抓取约需20秒）：
-```json
-"command_timeout": 60
 ```
 
 ---
@@ -342,4 +342,4 @@ MIT License
 
 ## 作者
 
-Claudian
+NobitaLab

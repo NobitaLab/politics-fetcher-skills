@@ -35,7 +35,9 @@ node fetch-weekly-politics.js
 
 ## 输出文件
 
-- **笔记**: 由 Claude 写入 vault（路径由用户指定）
+- 整理内容后更新到笔记 `0.备忘/HomePage/每日时政.md`（vault 相对路径）
+- 保留原笔记属性和大体格式
+- 更新 date 属性
 
 ## 示例输出
 
