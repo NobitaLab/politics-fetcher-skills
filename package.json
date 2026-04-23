@@ -1,0 +1,8 @@
+{
+  "name": "claude-tools",
+  "version": "1.0.0",
+  "description": "Claude Code tools",
+  "dependencies": {
+    "puppeteer": "^24.0.0"
+  }
+}
