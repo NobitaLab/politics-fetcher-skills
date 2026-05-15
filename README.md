@@ -77,41 +77,103 @@ Obsidian 启动 → Templater 检查笔记 date → 本周已更新？跳过 →
 ```
 
 3. 创建启动模板 `时政抓取.md`：
-```markdown
+```
 <%*
-// 智能跳过：检查笔记 date 是否在本周
-function getMonday(date) {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  return new Date(d.setDate(diff)).toISOString().slice(0, 10);
+/**
+ * 时政抓取启动模板
+ * Templater 检查是否需要更新，然后调用 Claude 执行 skill
+ * Claude 自动完成：抓取数据 → 分析整理 → 更新笔记
+ */
+// “最近周三”计算（含今天如果是周三）
+function getLastWednesday(today = new Date()) {
+  const day = today.getDay(); // 0=周日, 1=周一, ..., 3=周三
+  // 核心逻辑：(day - 3 + 7) % 7 确保结果非负
+  const diff = (day - 3 + 7) % 7;
+  const lastWed = new Date(today);
+  lastWed.setDate(today.getDate() - diff);
+  return lastWed.toISOString().slice(0, 10);
 }
 
-async function needsUpdate() {
-  const notePath = '0.备忘/HomePage/每日时政.md';
-  const file = app.vault.getAbstractFileByPath(notePath);
-  if (!file) return true;
-  
-  const content = await app.vault.read(file);
+// 封装：从内容中读取 Frontmatter 的 date 字段
+function getFrontmatterDate(content) {
   const match = content.match(/date:\s*(\d{4}-\d{2}-\d{2})/);
-  if (!match) return true;
-  
-  const lastMonday = getMonday(new Date(match[1]));
-  const thisMonday = getMonday(new Date());
-  
-  if (lastMonday === thisMonday) {
-    console.log('📅 时政：本周已更新，跳过');
-    return false;
-  }
-  return true;
+  return match ? match[1] : null;
 }
 
-if (await needsUpdate()) {
+// 封装：检查是否需要更新
+async function needsUpdate() {
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0, 10);
+  const targetWednesdayStr = getLastWednesday(today);
+  const notePath = '0.备忘/HomePage/每周时政.md';
+  const file = app.vault.getAbstractFileByPath(notePath);
+
+  // 情况1：文件不存在
+  if (!file) {
+    console.log('📅 时政：文件不存在，需要创建');
+    return true;
+  }
+
+  try {
+    const content = await app.vault.read(file);
+    const lastDate = getFrontmatterDate(content);
+
+    // 情况2：Frontmatter 没有 date 字段
+    if (!lastDate) {
+      console.log('📅 时政：未找到上次更新日期，需要更新');
+      return true;
+    }
+
+    // 情况3：判断是否需要更新
+    const isWednesdayAndNotUpdated = today.getDay() === 3 && lastDate < todayStr;
+    const isOutdated = lastDate < targetWednesdayStr;
+
+    if (isOutdated) {
+      console.log(`📅 时政：上次更新（${lastDate}）早于目标周三（${targetWednesdayStr}），需要补更`);
+    }
+
+    if (isWednesdayAndNotUpdated || isOutdated) {
+      return true;
+    }
+
+    console.log(`📅 时政：无需更新（上次：${lastDate}，目标周三：${targetWednesdayStr}）`);
+    return false;
+  } catch (e) {
+    console.error('📅 时政：读取文件失败，强制更新', e.message);
+    return true;
+  }
+}
+
+// 封装：执行 Claude 命令
+async function runClaudeUpdate() {
   const vaultPath = app.vault.adapter.basePath;
   const command = `claude -p "更新时政" --dangerously-skip-permissions --allowed-tools "Bash,Write,Read"`;
-  
   const { exec } = require('child_process');
-  exec(command, { cwd: vaultPath, maxBuffer: 1024 * 1024 * 10 });
+
+  return new Promise((resolve, reject) => {
+    exec(command, { cwd: vaultPath, maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
+      if (error) reject(error);
+      else resolve(stdout);
+    });
+  });
+}
+
+// 主流程
+try {
+  const shouldUpdate = await needsUpdate();
+
+  if (shouldUpdate) {
+    console.log('📰 开始抓取时政...');
+    new Notice('📰 开始抓取时政...');
+    await runClaudeUpdate();
+    console.log('✅ 时政抓取完成');
+    new Notice('✅ 时政抓取完成');
+  } else {
+    new Notice('📅 时政本周已更新，跳过');
+  }
+} catch (error) {
+  console.error('❌ 时政抓取失败:', error.message);
+  new Notice(`❌ 时政抓取失败: ${error.message}`);
 }
 %>
 ```
